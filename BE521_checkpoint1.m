@@ -1,0 +1,220 @@
+session_dg = cell(3,1);
+session_ecog = cell(3,1);
+dg = cell(3, 1);
+ecog = cell(3, 1);
+for i = 1:3
+    str_dg = strcat('I521_Sub', num2str(i), '_Training_dg')
+    str_ecog = strcat('I521_Sub', num2str(i), '_Training_ecog')
+    session_dg{i} = IEEGSession(str_dg, 'jaimiec', '//home/jaimiec/Documents/Spring_2018/BE521/Tutorial/jai_ieeglogin.bin');
+    session_ecog{i} = IEEGSession(str_ecog, 'jaimiec', '//home/jaimiec/Documents/Spring_2018/BE521/Tutorial/jai_ieeglogin.bin');
+end
+%%
+numChannels = [62, 48, 64]; %Varies per subject
+for i = 1:3
+    dg{i} = session_dg{i}.data.getvalues(1:299999, 1:5);
+    ecog{i} = session_ecog{i}.data.getvalues(1:299999, 1:numChannels(i));
+end
+%%
+samplingFrequency = 1000;
+windowLength = 0.1; %100 ms
+overlap = 0.05; %50 ms overlap
+windowDisp = windowLength - overlap;
+
+features = cell(3, max(numChannels), 6); %max cell length
+%Features = 1 mean, 2-6 the 5 frequency bands
+
+%Functions
+
+%Take average for each sample
+
+avg = @(x) mean(x) %Average of everything in the channel
+
+for i = 1:3 %per subject
+    for ch = 1:numChannels(i) %per channel
+      features{i, ch, 1} = [MovingWinFeats(ecog{i}(:, ch), 1000, windowLength, windowDisp, avg); 0] %This seems fake
+    end
+end
+
+%%
+%Evaluate the spectrum at 1000/2 + 1 = 501 frequencies
+Fs = 1000;
+freqNum = floor(Fs/2) + 1; %We need to have 5-175 Hz - if freqNum is 501, this covers the spectrum
+
+%Frequency bands vary from 0 to 1 pi rad/sample
+%Vary from 0 to pi rad/sample * 1000 samples/sec
+%Vary from 0 to 1000pi Hz
+%0 to 3.1416 Hz
+
+freqbands = [5 15; 20 25; 75 115; 125 160; 160 175]
+angfreqbands = freqbands*2*pi()
+angfreqpercents = angfreqbands/(Fs*pi()) %As a fraction of 1000pi, the max frequency
+angfreqindices = floor(angfreqpercents*freqNum)
+%Size spectrogram = 501 * 2949
+
+%Find frequency bands for each sample
+for i = 1:3 %per channel
+    for ch = 1:numChannels(i)
+        [spec, f, t] = spectrogram(ecog{i}(:, ch), windowLength*samplingFrequency, overlap*samplingFrequency, Fs);
+        for band = 1:5
+            features{i, ch, band+1} = abs(mean(spec(angfreqindices(band,:), :)))'
+        end
+    end
+end
+
+%%
+dg_subsampled = cell(3, 1);
+for i = 1:3
+    decimated = [];
+    for finger = 1:5
+        decimated = [decimated decimate(dg{i}(:, finger), 50)];
+    end
+    dg_subsampled{i} = decimated;
+end
+
+%%
+predicted_pos = cell(3, 5);
+f_predictors = cell(3, 5);
+for i = 1:3
+    feats = []
+    for ch = 1:numChannels(i)
+        for f = 1:6
+            feats  = [feats features{i, ch, f}];
+        end
+    end
+    %Features is a feature matrix of 6*channels features
+    for finger = 1:5
+        pos = dg_subsampled{i}(:, finger)
+        N = 3; %time bins before
+        M = size(feats,1) - N+1; %Total time bins
+        nu = size(feats,2) %number of "neurons" or features
+        R = zeros(M, 1);
+        for j = 1:M
+            R(j, 1) = 1;
+        end
+        for l = 1:nu
+            matrix = zeros(M, N);
+            for j = 1:M
+                for k = 1:N
+                    matrix(j, k) = feats(j+k-1, l);
+                end
+            end
+            R = [R matrix]; 
+        end
+        pos = pos(5:end);
+        f = mldivide((R'*R), (R'*pos));
+        f_predictors{i, finger} = f;
+        est_pos = R*f;
+        est_pos = [est_pos(1); est_pos(1); est_pos(1); est_pos(1); est_pos];
+        %Need to spline it back up to 300,000
+        
+        est_pos_full = spline(0:50:299999, est_pos, 0:1:299999);
+        predicted_pos{i, finger} = est_pos_full;
+    end
+end
+
+corr(predicted_pos{1,1}(1:end-1)', dg{1}(:,1))
+
+
+%% Calculate testing data from f_predictors
+
+session_ecog_leaderboard = cell(3,1);
+ecog_leaderboard = cell(3, 1);
+
+%Get the sessions
+for i = 1:3
+    str_ecog = strcat('I521_Sub', num2str(i), '_Leaderboard_ecog')
+    session_ecog_leaderboard{i} = IEEGSession(str_ecog, 'jaimiec', '//home/jaimiec/Documents/Spring_2018/BE521/Tutorial/jai_ieeglogin.bin');
+end
+
+%Get the actual data for each session
+numChannels = [62, 48, 64]; %Varies per subject
+for i = 1:3
+    ecog_leaderboard{i} = session_ecog_leaderboard{i}.data.getvalues(1:147500, 1:numChannels(i));
+end
+
+%Calculate all metrics again including R matrices
+
+samplingFrequency = 1000;
+windowLength = 0.1; %100 ms
+overlap = 0.05; %50 ms overlap
+windowDisp = windowLength - overlap;
+
+features_leaderboard = cell(3, max(numChannels), 6); %max cell length
+%Features = 1 mean, 2-6 the 5 frequency bands
+
+%Functions
+
+%Take average for each sample
+
+avg = @(x) mean(x) %Average of everything in the channel
+
+for i = 1:3 %per subject
+    for ch = 1:numChannels(i) %per channel
+      features_leaderboard{i, ch, 1} = [MovingWinFeats(ecog_leaderboard{i}(:, ch), 1000, windowLength, windowDisp, avg); 0] %This seems fake
+    end
+end
+
+%Evaluate the spectrum at 1000/2 + 1 = 501 frequencies
+Fs = 1000;
+freqNum = floor(Fs/2) + 1; %We need to have 5-175 Hz - if freqNum is 501, this covers the spectrum
+
+%Frequency bands vary from 0 to 1 pi rad/sample
+%Vary from 0 to pi rad/sample * 1000 samples/sec
+%Vary from 0 to 1000pi Hz
+%0 to 3.1416 Hz
+
+freqbands = [5 15; 20 25; 75 115; 125 160; 160 175]
+angfreqbands = freqbands*2*pi()
+angfreqpercents = angfreqbands/(Fs*pi()) %As a fraction of 1000pi, the max frequency
+angfreqindices = floor(angfreqpercents*freqNum)
+%Size spectrogram = 501 * 2949
+
+%Find frequency bands for each sample
+for i = 1:3 %per channel
+    for ch = 1:numChannels(i)
+        [spec, f, t] = spectrogram(ecog_leaderboard{i}(:, ch), windowLength*samplingFrequency, overlap*samplingFrequency, Fs);
+        for band = 1:5
+            features_leaderboard{i, ch, band+1} = abs(mean(spec(angfreqindices(band,:), :)))'
+        end
+    end
+end
+%%
+predicted_pos_leaderboard = cell(3, 1);
+for i = 1:3
+    feats = []
+    for ch = 1:numChannels(i)
+        for f = 1:6
+            feats = [feats features_leaderboard{i, ch, f}];
+        end
+    end
+    %Features is a feature matrix of 6*channels features
+    prediction = []
+    for finger = 1:5
+        N = 3; %time bins before
+        M = size(feats,1) - N+1; %Total time bins
+        nu = size(feats,2) %number of "neurons" or features
+        R = zeros(M, 1);
+        for j = 1:M
+            R(j, 1) = 1;
+        end
+        for l = 1:nu
+            matrix = zeros(M, N);
+            for j = 1:M
+                for k = 1:N
+                    matrix(j, k) = feats(j+k-1, l);
+                end
+            end
+            R = [R matrix]; 
+        end
+        est_pos = R*f_predictors{i, finger}; %Make predictions
+        est_pos = [est_pos(1); est_pos(1); est_pos(1); est_pos];
+        %Need to spline it back up to 300,000
+        est_pos_full = spline(0:50:147499, est_pos, 0:1:147499);
+        prediction = [prediction est_pos_full'];
+    end
+    predicted_pos_leaderboard{i} = prediction;
+end
+
+%%
+predicted_dg = predicted_pos_leaderboard;
+

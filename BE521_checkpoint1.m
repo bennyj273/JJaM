@@ -111,9 +111,22 @@ for i = 1:3
         predicted_pos{i, finger} = est_pos_full;
     end
 end
-
-corr(predicted_pos{1,1}(1:end-1)', dg{1}(:,1))
-
+%% Do some filtering
+for i = 1:3
+    for ch = 1:5
+        corr(predicted_pos{i,ch}(1:end-1)', dg{i}(:,ch))
+    end
+end
+disp('-')
+sz = 200;
+filt = ones(sz, 1)/sz;
+filtered_predicted_pos = cell(3,5);
+for i = 1:3
+    for ch = 1:5
+        filtered_predicted_pos{i, ch} = conv(predicted_pos{i,ch}(1:end-1)', filt, 'same');
+        corr(filtered_predicted_pos{i, ch}, dg{i}(:,ch))
+    end
+end
 
 %% Calculate testing data from f_predictors
 
@@ -216,5 +229,15 @@ for i = 1:3
 end
 
 %%
-predicted_dg = predicted_pos_leaderboard;
+%% Do some filtering
+sz = 200;
+filt = ones(sz, 1)/sz;
+predicted_pos_leaderboard_filtered = cell(3,1);
+for i = 1:3
+    for ch = 1:5
+        predicted_pos_leaderboard_filtered{i}(:,ch) = conv(predicted_pos_leaderboard{i}(1:end, ch), filt, 'same');
+    end
+end
 
+%%
+predicted_dg = predicted_pos_leaderboard_filtered;

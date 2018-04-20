@@ -1,23 +1,24 @@
+%Creating cells of Training set dg and ecog data
 session_dg = cell(3,1);
 session_ecog = cell(3,1);
 dg = cell(3, 1);
 ecog = cell(3, 1);
 ecog_filtered = cell(3, 1);
 for i = 1:3
-    str_dg = strcat('I521_Sub', num2str(i), '_Training_dg')
-    str_ecog = strcat('I521_Sub', num2str(i), '_Training_ecog')
-    session_dg{i} = IEEGSession(str_dg, 'jaimiec', '//home/jaimiec/Documents/Spring_2018/BE521/Tutorial/jai_ieeglogin.bin');
-    session_ecog{i} = IEEGSession(str_ecog, 'jaimiec', '//home/jaimiec/Documents/Spring_2018/BE521/Tutorial/jai_ieeglogin.bin');
+    str_dg = strcat('I521_Sub', num2str(i), '_Training_dg');
+    str_ecog = strcat('I521_Sub', num2str(i), '_Training_ecog');
+    session_dg{i} = IEEGSession(str_dg, 'bennyj', 'ben_ieeglogin.bin');
+    session_ecog{i} = IEEGSession(str_ecog,'bennyj', 'ben_ieeglogin.bin');
 end
 
-%% Ecog sessions
+%% Ecog sessions (Leaderboard data)
 session_ecog_leaderboard = cell(3,1);
 ecog_leaderboard = cell(3, 1);
 
 %Get the sessions
 for i = 1:3
-    str_ecog = strcat('I521_Sub', num2str(i), '_Leaderboard_ecog')
-    session_ecog_leaderboard{i} = IEEGSession(str_ecog, 'jaimiec', '//home/jaimiec/Documents/Spring_2018/BE521/Tutorial/jai_ieeglogin.bin');
+    str_ecog = strcat('I521_Sub', num2str(i), '_Leaderboard_ecog');
+    session_ecog_leaderboard{i} = IEEGSession(str_ecog, 'bennyj', 'ben_ieeglogin.bin');
 end
 
 %Get the actual data for each session
@@ -26,7 +27,7 @@ for i = 1:3
     ecog_leaderboard{i} = session_ecog_leaderboard{i}.data.getvalues(1:147500, 1:numChannels(i));
 end
 
-%%
+%% Get actual data for training set
 numChannels = [62, 48, 64]; %Varies per subject
 for i = 1:3
     dg{i} = session_dg{i}.data.getvalues(1:299999, 1:5);
@@ -78,11 +79,11 @@ features = cell(3, max(numChannels), 6); %max cell length
 
 %Take average for each sample
 
-avg = @(x) mean(x) %Average of everything in the channel
+avg = @(x) mean(x); %Average of everything in the channel
 
 for i = 1:3 %per subject
     for ch = 1:numChannels(i) %per channel
-      features{i, ch, 1} = [MovingWinFeats(ecog{i}(:, ch), 1000, windowLength, windowDisp, avg); 0] %This seems fake
+      features{i, ch, 1} = [MovingWinFeats(ecog{i}(:, ch), 1000, windowLength, windowDisp, avg); 0]; %This seems fake
     end
 end
 
@@ -100,6 +101,7 @@ freqbands = [5 10; 15 20; 20 25; 40 60; 75 100; 100 115; 125 140; 140 160; 160 1
 angfreqbands = freqbands*2*pi()
 angfreqpercents = angfreqbands/(Fs*pi()) %As a fraction of 1000pi, the max frequency
 angfreqindices = floor(angfreqpercents*freqNum)
+
 %Size spectrogram = 501 * 2949
 
 %Find frequency bands for each sample
@@ -108,6 +110,7 @@ for i = 1:3 %per channel
         [spec, f, t] = spectrogram(ecog{i}(:, ch), windowLength*samplingFrequency, overlap*samplingFrequency, Fs);
         for band = 1:size(freqbands,1)
             features{i, ch, band+1} = abs(mean(spec(angfreqindices(band,:), :)))'
+
         end
     end
 end
@@ -128,7 +131,7 @@ f_predictors = cell(3, 5);
 means = cell(3, 5, 6);
 stdevs = cell(3,5,6);
 for i = 1:3
-    feats = []
+    feats = [];
     for ch = 1:numChannels(i)
         for f = 1:6
             means{i,ch,f} = mean(features{i,ch,f});
@@ -140,10 +143,10 @@ for i = 1:3
 
     %Features is a feature matrix of 6*channels features
     for finger = 1:5
-        pos = dg_subsampled{i}(:, finger)
-        N = 6; %time bins before
+        pos = dg_subsampled{i}(:, finger);
+        N = 3; %time bins before
         M = size(feats,1) - N+1; %Total time bins
-        nu = size(feats,2) %number of "neurons" or features
+        nu = size(feats,2); %number of "neurons" or features
         R = zeros(M, 1);
         for j = 1:M
             R(j, 1) = 1;
@@ -194,7 +197,7 @@ for i = 1:3
     end
 end
 
-totalcorr = totalcorr/15
+totalcorr = totalcorr/15;
 
 %% Calculate testing data from f_predictors
 
@@ -232,11 +235,11 @@ features_leaderboard = cell(3, max(numChannels), 6); %max cell length
 
 %Take average for each sample
 
-avg = @(x) mean(x) %Average of everything in the channel
+avg = @(x) mean(x); %Average of everything in the channel
 
 for i = 1:3 %per subject
     for ch = 1:numChannels(i) %per channel
-      features_leaderboard{i, ch, 1} = [MovingWinFeats(ecog_leaderboard{i}(:, ch), 1000, windowLength, windowDisp, avg); 0] %This seems fake
+      features_leaderboard{i, ch, 1} = [MovingWinFeats(ecog_leaderboard{i}(:, ch), 1000, windowLength, windowDisp, avg); 0]; %This seems fake
     end
 end
 
@@ -249,11 +252,13 @@ freqNum = floor(Fs/2) + 1; %We need to have 5-175 Hz - if freqNum is 501, this c
 %Vary from 0 to 1000pi Hz
 %0 to 3.1416 Hz
 
+
 %freqbands = [5 15; 20 25; 75 115; 125 160; 160 175]
 freqbands = [5 10; 15 20; 20 25; 40 60; 75 100; 100 115; 125 140; 140 160; 160 175];
 angfreqbands = freqbands*2*pi()
 angfreqpercents = angfreqbands/(Fs*pi()) %As a fraction of 1000pi, the max frequency
 angfreqindices = floor(angfreqpercents*freqNum)
+
 %Size spectrogram = 501 * 2949
 
 %Find frequency bands for each sample
@@ -262,13 +267,14 @@ for i = 1:3 %per channel
         [spec, f, t] = spectrogram(ecog_leaderboard{i}(:, ch), windowLength*samplingFrequency, overlap*samplingFrequency, Fs);
         for band = 1:size(freqbands, 1)
             features_leaderboard{i, ch, band+1} = abs(mean(spec(angfreqindices(band,:), :)))'
+
         end
     end
 end
 %%
 predicted_pos_leaderboard = cell(3, 1);
 for i = 1:3
-    feats = []
+    feats = [];
     for ch = 1:numChannels(i)
         for f = 1:6
             norm_features_leaderboard{i,ch,f} = (features_leaderboard{i,ch,f}-means{i,ch,f})/stdevs{i,ch,f};
@@ -276,11 +282,11 @@ for i = 1:3
         end
     end
     %Features is a feature matrix of 6*channels features
-    prediction = []
+    prediction = [];
     for finger = 1:5
-        N = 6; %time bins before
+        N = 3; %time bins before
         M = size(feats,1) - N+1; %Total time bins
-        nu = size(feats,2) %number of "neurons" or features
+        nu = size(feats,2); %number of "neurons" or features
         R = zeros(M, 1);
         for j = 1:M
             R(j, 1) = 1;

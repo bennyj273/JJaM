@@ -2,6 +2,7 @@ session_dg = cell(3,1);
 session_ecog = cell(3,1);
 dg = cell(3, 1);
 ecog = cell(3, 1);
+ecog_filtered = cell(3, 1);
 for i = 1:3
     str_dg = strcat('I521_Sub', num2str(i), '_Training_dg')
     str_ecog = strcat('I521_Sub', num2str(i), '_Training_ecog')
@@ -14,6 +15,39 @@ for i = 1:3
     dg{i} = session_dg{i}.data.getvalues(1:299999, 1:5);
     ecog{i} = session_ecog{i}.data.getvalues(1:299999, 1:numChannels(i));
 end
+
+%% Filter the ecog data
+
+%sz = 10;
+%filt = ones(sz, 1)/sz;
+%for i = 1:3
+%    for ch = 1:numChannels(i)
+%        ecog{i}(:,ch) = conv(ecog{i}(:, ch), filt, 'same');
+%    end
+%end
+
+%% Butterworth filter on the ecog data
+
+%d = designfilt('lowpassfir', 'PassbandFrequency', 190, 'StopbandFrequency', 200, 'PassbandRipple', 1, 'StopbandAttenuation', 60, 'SampleRate', 1000);
+%ecog_filtered = ecog;
+
+%for i = 1:3
+%    for ch = 1:numChannels(i)
+%        ecog_filtered{i}(:,ch) = filtfilt(d, ecog{i}(:,ch));
+%    end
+%end
+
+fs = 1000;
+band = [50]/(fs/2); %80 - 50 Hz of cutoff
+[f, e] = butter(2, band);
+for i = 1:3
+    for ch = 1:numChannels(i)
+        ecog_filtered{i}(:,ch) = filtfilt(f, e, ecog{i}(:,ch));
+    end
+end
+
+ecog = ecog_filtered;
+
 %%
 samplingFrequency = 1000;
 windowLength = 0.1; %100 ms
@@ -84,7 +118,7 @@ for i = 1:3
     %Features is a feature matrix of 6*channels features
     for finger = 1:5
         pos = dg_subsampled{i}(:, finger)
-        N = 3; %time bins before
+        N = 6; %time bins before
         M = size(feats,1) - N+1; %Total time bins
         nu = size(feats,2) %number of "neurons" or features
         R = zeros(M, 1);
@@ -100,11 +134,12 @@ for i = 1:3
             end
             R = [R matrix]; 
         end
-        pos = pos(5:end);
+        pos = pos(N+2:end);
         f = mldivide((R'*R), (R'*pos));
         f_predictors{i, finger} = f;
         est_pos = R*f;
-        est_pos = [est_pos(1); est_pos(1); est_pos(1); est_pos(1); est_pos];
+        x = est_pos(1)*ones(N+1, 1);
+        est_pos = [x; est_pos];
         %Need to spline it back up to 300,000
         
         est_pos_full = spline(0:50:299999, est_pos, 0:1:299999);
@@ -143,6 +178,14 @@ end
 numChannels = [62, 48, 64]; %Varies per subject
 for i = 1:3
     ecog_leaderboard{i} = session_ecog_leaderboard{i}.data.getvalues(1:147500, 1:numChannels(i));
+end
+
+sz = 10;
+filt = ones(sz, 1)/sz;
+for i = 1:3
+    for ch = 1:numChannels(i)
+        ecog_leaderboard{i}(:,ch) = conv(ecog_leaderboard{i}(:, ch), filt, 'same');
+    end
 end
 
 %Calculate all metrics again including R matrices
@@ -203,7 +246,7 @@ for i = 1:3
     %Features is a feature matrix of 6*channels features
     prediction = []
     for finger = 1:5
-        N = 3; %time bins before
+        N = 6; %time bins before
         M = size(feats,1) - N+1; %Total time bins
         nu = size(feats,2) %number of "neurons" or features
         R = zeros(M, 1);
@@ -220,7 +263,8 @@ for i = 1:3
             R = [R matrix]; 
         end
         est_pos = R*f_predictors{i, finger}; %Make predictions
-        est_pos = [est_pos(1); est_pos(1); est_pos(1); est_pos];
+        x = est_pos(1)*ones(N, 1);
+        est_pos = [x; est_pos];
         %Need to spline it back up to 300,000
         est_pos_full = spline(0:50:147499, est_pos, 0:1:147499);
         prediction = [prediction est_pos_full'];
@@ -228,9 +272,8 @@ for i = 1:3
     predicted_pos_leaderboard{i} = prediction;
 end
 
-%%
 %% Do some filtering
-sz = 200;
+sz = 1000;
 filt = ones(sz, 1)/sz;
 predicted_pos_leaderboard_filtered = cell(3,1);
 for i = 1:3
@@ -241,3 +284,6 @@ end
 
 %%
 predicted_dg = predicted_pos_leaderboard_filtered;
+
+
+

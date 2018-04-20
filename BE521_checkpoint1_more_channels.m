@@ -1,7 +1,7 @@
 session_dg = cell(3,1);
 session_ecog = cell(3,1);
 dg = cell(3, 1);
-ecog = cell(3, 1);
+ecog = cell(3, 1)
 ecog_filtered = cell(3, 1);
 for i = 1:3
     str_dg = strcat('I521_Sub', num2str(i), '_Training_dg')

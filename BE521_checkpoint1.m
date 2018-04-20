@@ -9,6 +9,23 @@ for i = 1:3
     session_dg{i} = IEEGSession(str_dg, 'jaimiec', '//home/jaimiec/Documents/Spring_2018/BE521/Tutorial/jai_ieeglogin.bin');
     session_ecog{i} = IEEGSession(str_ecog, 'jaimiec', '//home/jaimiec/Documents/Spring_2018/BE521/Tutorial/jai_ieeglogin.bin');
 end
+
+%% Ecog sessions
+session_ecog_leaderboard = cell(3,1);
+ecog_leaderboard = cell(3, 1);
+
+%Get the sessions
+for i = 1:3
+    str_ecog = strcat('I521_Sub', num2str(i), '_Leaderboard_ecog')
+    session_ecog_leaderboard{i} = IEEGSession(str_ecog, 'jaimiec', '//home/jaimiec/Documents/Spring_2018/BE521/Tutorial/jai_ieeglogin.bin');
+end
+
+%Get the actual data for each session
+numChannels = [62, 48, 64]; %Varies per subject
+for i = 1:3
+    ecog_leaderboard{i} = session_ecog_leaderboard{i}.data.getvalues(1:147500, 1:numChannels(i));
+end
+
 %%
 numChannels = [62, 48, 64]; %Varies per subject
 for i = 1:3
@@ -108,13 +125,19 @@ end
 %%
 predicted_pos = cell(3, 5);
 f_predictors = cell(3, 5);
+means = cell(3, 5, 6);
+stdevs = cell(3,5,6);
 for i = 1:3
     feats = []
     for ch = 1:numChannels(i)
         for f = 1:6
-            feats  = [feats features{i, ch, f}];
+            means{i,ch,f} = mean(features{i,ch,f});
+            stdevs{i,ch,f} = std(features{i,ch,f});
+            norm_features{i,ch,f} = (features{i,ch,f}-means{i,ch,f}) / stdevs{i,ch,f};
+            feats  = [feats norm_features{i, ch, f}];
         end
     end
+
     %Features is a feature matrix of 6*channels features
     for finger = 1:5
         pos = dg_subsampled{i}(:, finger)
@@ -146,7 +169,7 @@ for i = 1:3
         predicted_pos{i, finger} = est_pos_full;
     end
 end
-%% Do some filtering
+%% Do some evaluation
 for i = 1:3
     for ch = 1:5
         corr(predicted_pos{i,ch}(1:end-1)', dg{i}(:,ch))
@@ -156,37 +179,44 @@ disp('-')
 sz = 200;
 filt = ones(sz, 1)/sz;
 filtered_predicted_pos = cell(3,5);
+totalcorr = 0;
 for i = 1:3
     for ch = 1:5
         filtered_predicted_pos{i, ch} = conv(predicted_pos{i,ch}(1:end-1)', filt, 'same');
-        corr(filtered_predicted_pos{i, ch}, dg{i}(:,ch))
     end
 end
+
+%% Do some evaluation
+totalcorr = 0;
+for i = 1:3
+    for ch = 1:5
+        totalcorr = totalcorr + corr(predicted_pos{i,ch}(1:end-1)', dg{i}(:,ch));
+    end
+end
+
+totalcorr = totalcorr/15
 
 %% Calculate testing data from f_predictors
 
-session_ecog_leaderboard = cell(3,1);
-ecog_leaderboard = cell(3, 1);
 
-%Get the sessions
-for i = 1:3
-    str_ecog = strcat('I521_Sub', num2str(i), '_Leaderboard_ecog')
-    session_ecog_leaderboard{i} = IEEGSession(str_ecog, 'jaimiec', '//home/jaimiec/Documents/Spring_2018/BE521/Tutorial/jai_ieeglogin.bin');
-end
+%sz = 10;
+%filt = ones(sz, 1)/sz;
+%for i = 1:3
+%    for ch = 1:numChannels(i)
+%        ecog_leaderboard{i}(:,ch) = conv(ecog_leaderboard{i}(:, ch), filt, 'same');
+%    end
+%end
 
-%Get the actual data for each session
-numChannels = [62, 48, 64]; %Varies per subject
-for i = 1:3
-    ecog_leaderboard{i} = session_ecog_leaderboard{i}.data.getvalues(1:147500, 1:numChannels(i));
-end
-
-sz = 10;
-filt = ones(sz, 1)/sz;
+fs = 1000;
+band = [50]/(fs/2); %80 - 50 Hz of cutoff
+[f, e] = butter(2, band);
 for i = 1:3
     for ch = 1:numChannels(i)
-        ecog_leaderboard{i}(:,ch) = conv(ecog_leaderboard{i}(:, ch), filt, 'same');
+        ecog_filtered{i}(:,ch) = filtfilt(f, e, ecog{i}(:,ch));
     end
 end
+
+ecog = ecog_filtered;
 
 %Calculate all metrics again including R matrices
 
@@ -240,7 +270,8 @@ for i = 1:3
     feats = []
     for ch = 1:numChannels(i)
         for f = 1:6
-            feats = [feats features_leaderboard{i, ch, f}];
+            norm_features_leaderboard{i,ch,f} = (features_leaderboard{i,ch,f}-means{i,ch,f})/stdevs{i,ch,f};
+            feats = [feats norm_features_leaderboard{i, ch, f}];
         end
     end
     %Features is a feature matrix of 6*channels features
@@ -284,6 +315,4 @@ end
 
 %%
 predicted_dg = predicted_pos_leaderboard_filtered;
-
-
 

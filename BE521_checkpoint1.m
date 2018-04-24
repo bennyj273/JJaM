@@ -14,24 +14,63 @@ end
 %% Ecog sessions (Leaderboard data)
 session_ecog_leaderboard = cell(3,1);
 ecog_leaderboard = cell(3, 1);
-
+numChannels = zeros(3,1); %Varies per subject
 %Get the sessions
 for i = 1:3
     str_ecog = strcat('I521_Sub', num2str(i), '_Leaderboard_ecog');
     session_ecog_leaderboard{i} = IEEGSession(str_ecog, 'bennyj', 'ben_ieeglogin.bin');
+    numChannels(i)=length(session_ecog{i}.data.rawChannels);
 end
 
 %Get the actual data for each session
-numChannels = [62, 48, 64]; %Varies per subject
 for i = 1:3
     ecog_leaderboard{i} = session_ecog_leaderboard{i}.data.getvalues(1:147500, 1:numChannels(i));
 end
 
+%% Calculate number of values
+
+%Sampling Rate
+sampr = 1000;
+%Get duration in seconds (Leaderboard)
+durationInUSec_train = session_ecog{1}.data.rawChannels(1).get_tsdetails.getDuration;
+durationInSec_train = durationInUSec_train/(10^6); %uS -> S conversion
+%Get duration in seconds (Training)
+durationInUSec_lbd = session_ecog_leaderboard{1}.data.rawChannels(1).get_tsdetails.getDuration;
+durationInSec_lbd = durationInUSec_lbd/(10^6); %uS -> S conversion
+
+
+%Number of values (Leaderboard)
+num_values_train = durationInSec_train*sampr +1; 
+%Number of values (Training)
+num_values_lbd = durationInSec_lbd*sampr +1; 
+
 %% Get actual data for training set
-numChannels = [62, 48, 64]; %Varies per subject
 for i = 1:3
-    dg{i} = session_dg{i}.data.getvalues(1:299999, 1:5);
-    ecog{i} = session_ecog{i}.data.getvalues(1:299999, 1:numChannels(i));
+    dg{i} = session_dg{i}.data.getvalues(1:num_values_train, 1:5);
+    ecog{i} = session_ecog{i}.data.getvalues(1:num_values_train, 1:numChannels(i));
+end
+
+%% Crossvalidation
+
+%Number of folds
+fold_num=10;
+%Calculate number of samples per fold
+n = num_values_train;
+sample_num = n/fold_num;
+folds = cell(1,fold_num);
+%Randommly populate the dataset indices in the folds 
+vec=1:fold_num
+for i = 1:fold_num
+    start = num_values_train
+    folds{i}=vec(start:(start+n-1));
+end
+%Number of unique sample indices
+disp(length(unique([folds{:}])));
+
+
+for i = 1:3
+    dg{i} = session_dg{i}.data.getvalues(1:270000, 1:5);
+    ecog{i} = session_ecog{i}.data.getvalues(1:270000, 1:numChannels(i));
 end
 
 %% Filter the ecog data
@@ -98,18 +137,18 @@ freqNum = floor(Fs/2) + 1; %We need to have 5-175 Hz - if freqNum is 501, this c
 %0 to 3.1416 Hz
 
 freqbands = [5 10; 15 20; 20 25; 40 60; 75 100; 100 115; 125 140; 140 160; 160 175];
-angfreqbands = freqbands*2*pi()
-angfreqpercents = angfreqbands/(Fs*pi()) %As a fraction of 1000pi, the max frequency
-angfreqindices = floor(angfreqpercents*freqNum)
+angfreqbands = freqbands*2*pi();
+angfreqpercents = angfreqbands/(Fs*pi()); %As a fraction of 1000pi, the max frequency
+angfreqindices = floor(angfreqpercents*freqNum);
 
 %Size spectrogram = 501 * 2949
 
 %Find frequency bands for each sample
 for i = 1:3 %per channel
     for ch = 1:numChannels(i)
-        [spec, f, t] = spectrogram(ecog{i}(:, ch), windowLength*samplingFrequency, overlap*samplingFrequency, Fs);
+        [spec, ~, t] = spectrogram(ecog{i}(:, ch), windowLength*samplingFrequency, overlap*samplingFrequency, Fs);
         for band = 1:size(freqbands,1)
-            features{i, ch, band+1} = abs(mean(spec(angfreqindices(band,:), :)))'
+            features{i, ch, band+1} = abs(mean(spec(angfreqindices(band,:), :)))';
 
         end
     end
@@ -193,7 +232,7 @@ end
 totalcorr = 0;
 for i = 1:3
     for ch = 1:5
-        totalcorr = totalcorr + corr(predicted_pos{i,ch}(1:end-1)', dg{i}(:,ch));
+        totalcorr = totalcorr + corr(fipredicted_pos{i,ch}(1:end-1)', dg{i}(:,ch));
     end
 end
 
@@ -255,9 +294,9 @@ freqNum = floor(Fs/2) + 1; %We need to have 5-175 Hz - if freqNum is 501, this c
 
 %freqbands = [5 15; 20 25; 75 115; 125 160; 160 175]
 freqbands = [5 10; 15 20; 20 25; 40 60; 75 100; 100 115; 125 140; 140 160; 160 175];
-angfreqbands = freqbands*2*pi()
-angfreqpercents = angfreqbands/(Fs*pi()) %As a fraction of 1000pi, the max frequency
-angfreqindices = floor(angfreqpercents*freqNum)
+angfreqbands = freqbands*2*pi();
+angfreqpercents = angfreqbands/(Fs*pi()); %As a fraction of 1000pi, the max frequency
+angfreqindices = floor(angfreqpercents*freqNum);
 
 %Size spectrogram = 501 * 2949
 
@@ -266,7 +305,7 @@ for i = 1:3 %per channel
     for ch = 1:numChannels(i)
         [spec, f, t] = spectrogram(ecog_leaderboard{i}(:, ch), windowLength*samplingFrequency, overlap*samplingFrequency, Fs);
         for band = 1:size(freqbands, 1)
-            features_leaderboard{i, ch, band+1} = abs(mean(spec(angfreqindices(band,:), :)))'
+            features_leaderboard{i, ch, band+1} = abs(mean(spec(angfreqindices(band,:), :)))';
 
         end
     end

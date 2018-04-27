@@ -49,21 +49,21 @@ end
 %% Crossvalidation
 
 %Number of folds
-fold_num=10;
+%fold_num=10;
 %Calculate number of samples per fold
-n = num_values_train;
-sample_num = n/fold_num;
-folds = cell(1,fold_num);
+%n = num_values_train;
+%sample_num = n/fold_num;
+%folds = cell(1,fold_num);
 %Randommly populate the dataset indices in the folds 
-vec=1:fold_num
-for i = 1:fold_num
-    start = num_values_train
-    folds{i}=vec(start:(start+n-1));
-end
+%vec=1:fold_num
+%for i = 1:fold_num
+%    start = num_values_train
+%    folds{i}=vec(start:(start+n-1));
+%end
 %Number of unique sample indices
-disp(length(unique([folds{:}])));
+%disp(length(unique([folds{:}])));
 
-
+%% Get values
 for i = 1:3
     dg{i} = session_dg{i}.data.getvalues(1:270000, 1:5);
     ecog{i} = session_ecog{i}.data.getvalues(1:270000, 1:numChannels(i));
@@ -153,6 +153,9 @@ for i = 1:3 %per channel
         end
     end
 end
+
+%% Put correlation features at the end
+
 
 %% Decimation - training
 dg_subsampled = cell(3, 1);

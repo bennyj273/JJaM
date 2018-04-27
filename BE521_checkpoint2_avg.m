@@ -433,7 +433,6 @@ end
 %% Finalize - testing
 predicted_dg = predpos_leaderboard_filtfilt;
 
-<<<<<<< HEAD
 %% Variable.Mat file for Make_Predictions
 save('jjam_model.mat','f_predictors','means','stdevs');
 
@@ -442,6 +441,3 @@ ecogTestVect = cell(3,1);
 for i = 1:3
     ecogTestVect{i} = session_ecog{i}.data.getvalues(5000:150000, 1:numChannels(i));
 end
-=======
-
->>>>>>> 7a3a29e45cad4b43d7737831d443fa130f43ebee

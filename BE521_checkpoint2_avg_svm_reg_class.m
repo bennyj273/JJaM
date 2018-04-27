@@ -178,6 +178,8 @@ for i = 1:3 %per subject
     end
 end
 
+%%PROBLEM: it is delayed, doesn't actually fit areas of movement
+
 
 %% Prediction - training
 predicted_pos = cell(3, 5);
@@ -227,9 +229,19 @@ for i = 1:3
         pos = pos(N+2:end);
         isMoving = isMoving(N+2:end);
         
-        SVMModel = fitcsvm(feats(1:end-2, 1:numfeats*10), isMoving); %TOO SLOW
-        est_motion = predict(SVMModel, feats(1:end-2, 1:numfeats*10));
-           
+        %SVMModel = fitcsvm(feats(1:end-2, 1:numfeats), isMoving); %TOO SLOW
+        %fitsvm functions are slow
+        %est_motion = predict(SVMModel, feats(1:end-2, 1:numfeats));
+         
+        KNNModel = fitcknn(R, isMoving, 'NumNeighbors', 2)
+        est_motion = predict(KNNModel, R)
+        
+        %TODO: de-shift isMoving
+        %Implement it across the different channels
+        %Use it as a mask for the position information (so that when it's
+        %0, you either move less (filter more?) or just keep it still
+        %Implement it in the testing data
+        
        [Mdl, FitInfo] = fitrlinear(R, pos, 'Regularization', 'lasso', 'PassLimit', 10, 'Solver', 'asgd')
        %PassLimit 5: testcorr 0.5308
        %PassLimit 7: testcorr 0.5434, 0.5533 (submitted one)

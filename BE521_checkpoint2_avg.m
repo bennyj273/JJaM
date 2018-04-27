@@ -132,7 +132,7 @@ freqNum = floor(Fs/2) + 1; %We need to have 5-175 Hz - if freqNum is 501, this c
 %Vary from 0 to 1000pi Hz
 %0 to 3.1416 Hz
 
-freqbands = [1.5 4; 4 8; 8 14; 14 20; 20 30; 30 50; 50 90; 90 120; 120 150];
+freqbands = [5 10; 15 20; 20 25; 40 60;75 115; 125 160; 160 175; 200 220; 220 240; 240 260];
 angfreqbands = freqbands*2*pi();
 angfreqpercents = angfreqbands/(Fs*pi()); %As a fraction of 1000pi, the max frequency
 angfreqindices = floor(angfreqpercents*freqNum);
@@ -174,7 +174,7 @@ for i = 1:3
             means{i,ch,f} = mean(features{i,ch,f});
             stdevs{i,ch,f} = std(features{i,ch,f});
             norm_features{i,ch,f} = (features{i,ch,f}-means{i,ch,f}) / stdevs{i,ch,f};
-            sz = 10;
+            sz = 2;
             filt = ones(sz, 1)/sz;
             norm_features{i, ch, f} = conv(norm_features{i, ch, f}, filt, 'same');
             feats = [feats norm_features{i, ch, f}(1:5998)];
@@ -228,7 +228,7 @@ end
 testcorr/15
 %%
 disp('-')
-sz = 200;
+sz = 300;
 filt = ones(sz, 1)/sz;
 filtered_predicted_pos = cell(3,5);
 totalcorr = 0;
@@ -332,7 +332,7 @@ for i = 1:3
     for ch = 1:numChannels(i)
         for f = 1:6
             norm_features_leaderboard{i,ch,f} = (features_leaderboard{i,ch,f}-means{i,ch,f})/stdevs{i,ch,f};
-            sz = 10;
+            sz = 2;
             filt = ones(sz, 1)/sz;
             norm_features_leaderboard{i, ch, f} = conv(norm_features_leaderboard{i, ch, f}, filt, 'same');
             feats = [feats norm_features_leaderboard{i, ch, f}];
@@ -372,7 +372,7 @@ for i = 1:3
 end
 
 %% Do some filtering - testing
-sz = 200;
+sz = 300;
 filt = ones(sz, 1)/sz;
 predicted_pos_leaderboard_filtered = cell(3,1);
 for i = 1:3
@@ -381,12 +381,13 @@ for i = 1:3
     end
 end
 
+predpos_leaderboard_filtfilt= cell(3,1);
 fs = 1000;
-band = [0.6 1.5]/(fs/2); %80 - 50 Hz of cutoff
+band = [0.6 1.3]/(fs/2); %80 - 50 Hz of cutoff
 [f, e] = butter(1, band,'stop');
 for i = 1:3
     for fing = 1:5
-        predpos_leaderboard_filtfilt{i,fing} = filtfilt(f, e, filtered_predicted_pos{i,fing});
+        predpos_leaderboard_filtfilt{i}(:,fing) = filtfilt(f, e, predicted_pos_leaderboard_filtered{i}(:,fing));
     end
 end
 

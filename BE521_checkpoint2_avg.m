@@ -309,6 +309,7 @@ totalcorr = totalcorr/15
 
 %Calculate all metrics again including R matrices
 
+numChannels = [62;48;64];
 samplingFrequency = 1000;
 windowLength = 0.1; %100 ms
 overlap = 0.05; %50 ms overlap
@@ -435,4 +436,15 @@ end
 %% Finalize - testing
 predicted_dg = predpos_leaderboard_filtfilt;
 
+<<<<<<< HEAD
+%% Variable.Mat file for Make_Predictions
+save('jjam_model.mat','f_predictors','means','stdevs');
 
+%% Makes testing data for make_predictions
+ecogTestVect = cell(3,1);
+for i = 1:3
+    ecogTestVect{i} = session_ecog{i}.data.getvalues(5000:150000, 1:numChannels(i));
+end
+=======
+
+>>>>>>> 7a3a29e45cad4b43d7737831d443fa130f43ebee

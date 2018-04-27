@@ -107,18 +107,24 @@ windowLength = 0.1; %100 ms
 overlap = 0.05; %50 ms overlap
 windowDisp = windowLength - overlap;
 
-features = cell(3, max(numChannels), 7); %max cell length - adding a correlation band
+features = cell(3, max(numChannels), 9); %max cell length
 %Features = 1 mean, 2-6 the 5 frequency bands
 
 %Functions
 
 %Take average for each sample
-
 avg = @(x) mean(x); %Average of everything in the channel
-
+square = @(x) mean(x.^2) %Square everything in channel
+%Line Length function
+LLFn = @(x) sum(abs(diff(x)));
+%Area function
+Area = @(x) sum(abs(x));
 for i = 1:3 %per subject
     for ch = 1:numChannels(i) %per channel
       features{i, ch, 1} = [MovingWinFeats(ecog{i}(:, ch), 1000, windowLength, windowDisp, avg); 0]; %This seems fake
+      features{i, ch, 2} = [MovingWinFeats(ecog{i}(:, ch), 1000, windowLength, windowDisp, square); 0]; %This seems fake
+      features{i, ch, 3} = [MovingWinFeats(ecog{i}(:, ch), 1000, windowLength, windowDisp, LLFn); 0]; %This seems fake
+      features{i, ch, 4} = [MovingWinFeats(ecog{i}(:, ch), 1000, windowLength, windowDisp, Area); 0]; %This seems fake
     end
 end
 
@@ -131,7 +137,6 @@ freqNum = floor(Fs/2) + 1; %We need to have 5-175 Hz - if freqNum is 501, this c
 %Vary from 0 to pi rad/sample * 1000 samples/sec
 %Vary from 0 to 1000pi Hz
 %0 to 3.1416 Hz
-
 freqbands = [5 10; 15 20; 20 25; 40 60;75 115; 125 160; 160 175; 200 220; 220 240; 240 260];
 angfreqbands = freqbands*2*pi();
 angfreqpercents = angfreqbands/(Fs*pi()); %As a fraction of 1000pi, the max frequency
@@ -144,8 +149,7 @@ for i = 1:3 %per channel
     for ch = 1:numChannels(i)
         [spec, ~, t] = spectrogram(ecog{i}(:, ch), windowLength*samplingFrequency, overlap*samplingFrequency, Fs);
         for band = 1:size(freqbands,1)
-            features{i, ch, band+1} = abs(mean(spec(angfreqindices(band,:), :)))';
-
+            features{i, ch, band+4} = abs(mean(spec(angfreqindices(band,:), :)))';
         end
     end
 end
@@ -166,14 +170,16 @@ end
 %% Prediction - training
 predicted_pos = cell(3, 5);
 f_predictors = cell(3, 5);
-means = cell(3, 5, 6);
-stdevs = cell(3,5,6);
+featsz=size(features);
+numfeats=featsz(3);
+means = cell(3, 5, 14);
+stdevs = cell(3,5,14);
 BETAS = cell(3, 5);
 
 for i = 1:3
     feats = [];
     for ch = 1:numChannels(i)
-        for f = 1:6
+        for f = 1:numfeats
             means{i,ch,f} = mean(features{i,ch,f});
             stdevs{i,ch,f} = std(features{i,ch,f});
             norm_features{i,ch,f} = (features{i,ch,f}-means{i,ch,f}) / stdevs{i,ch,f};
@@ -225,6 +231,7 @@ end
 testcorr = 0;
 for i = 1:3
     for ch = 1:5
+        corr(predicted_pos{i,ch}', dg{i}(:,ch))
         testcorr  = testcorr + corr(predicted_pos{i,ch}', dg{i}(:,ch));
     end
 end
@@ -250,16 +257,35 @@ for i = 1:3
     end
 end
 
+% high = [0.00005]/(fs/2); %80 - 50 Hz of cutoff
+% [f, e] = butter(2, high,'high');
+% for i = 1:3
+%     for fing = 1:5
+%         predpos_fff{i,fing} = filtfilt(f, e, predpos_filtfilt{i,fing});
+%     end
+% end
+
 %% Do some evaluation
 totalcorr = 0;
 for i = 1:3
     for ch = 1:5
+        corr(predpos_filtfilt{i,ch}, dg{i}(:,ch))
         totalcorr = totalcorr + corr(predpos_filtfilt{i,ch}, dg{i}(:,ch));
     end
 end
 
 totalcorr = totalcorr/15
 
+%% Do some evaluation
+totalcorr = 0;
+for i = 1:3
+    for ch = 1:5
+        corr(predpos_fff{i,ch}, dg{i}(:,ch))
+        totalcorr = totalcorr + corr(predpos_fff{i,ch}, dg{i}(:,ch));
+    end
+end
+
+totalcorr = totalcorr/15
 %% Calculate testing data from f_predictors - testing
 
 %sz = 10;
@@ -300,6 +326,9 @@ avg = @(x) mean(x); %Average of everything in the channel
 for i = 1:3 %per subject
     for ch = 1:numChannels(i) %per channel
       features_leaderboard{i, ch, 1} = [MovingWinFeats(ecog_leaderboard{i}(:, ch), 1000, windowLength, windowDisp, avg); 0]; %This seems fake
+      features_leaderboard{i, ch, 2} = [MovingWinFeats(ecog_leaderboard{i}(:, ch), 1000, windowLength, windowDisp, square); 0]; %This seems fake
+      features_leaderboard{i, ch, 3} = [MovingWinFeats(ecog_leaderboard{i}(:, ch), 1000, windowLength, windowDisp, LLFn); 0]; %This seems fake
+      features_leaderboard{i, ch, 4} = [MovingWinFeats(ecog_leaderboard{i}(:, ch), 1000, windowLength, windowDisp, Area); 0]; %This seems fake
     end
 end
 
@@ -323,7 +352,7 @@ for i = 1:3 %per channel
     for ch = 1:numChannels(i)
         [spec, f, t] = spectrogram(ecog_leaderboard{i}(:, ch), windowLength*samplingFrequency, overlap*samplingFrequency, Fs);
         for band = 1:size(freqbands, 1)
-            features_leaderboard{i, ch, band+1} = abs(mean(spec(angfreqindices(band,:), :)))';
+            features_leaderboard{i, ch, band+4} = abs(mean(spec(angfreqindices(band,:), :)))';
 
         end
     end
@@ -333,7 +362,7 @@ predicted_pos_leaderboard = cell(3, 1);
 for i = 1:3
     feats = [];
     for ch = 1:numChannels(i)
-        for f = 1:6
+        for f = 1:numfeats
             norm_features_leaderboard{i,ch,f} = (features_leaderboard{i,ch,f}-means{i,ch,f})/stdevs{i,ch,f};
             sz = 2;
             filt = ones(sz, 1)/sz;
@@ -364,7 +393,7 @@ for i = 1:3
         %est_pos = [x; est_pos];
         %Need to spline it back up to 300,000
            
-       est_pos = R*f_predictors{i, finger}; %Make predictions
+        est_pos = R*f_predictors{i, finger}; %Make predictions
         x = est_pos(1)*ones(N, 1);
         est_pos = [x; est_pos];
         %Need to spline it back up to 300,000
@@ -394,6 +423,16 @@ for i = 1:3
     end
 end
 
+% high = [0.005]/(fs/2); %80 - 50 Hz of cutoff
+% [f, e] = butter(2, high,'high');
+% for i = 1:3
+%     for fing = 1:5
+%         predpos_leaderboard_filtfilt{i}(:,fing) = filtfilt(f, e, predicted_pos_leaderboard_filtered{i}(:,fing));
+%     end
+% end
+
+
 %% Finalize - testing
 predicted_dg = predpos_leaderboard_filtfilt;
+
 

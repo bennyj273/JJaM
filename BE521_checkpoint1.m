@@ -57,20 +57,17 @@ fold_num=10;
 %Calculate number of samples per fold
 n = num_values_train;
 sample_num = n/fold_num;
-folds = cell(1,fold_num);
-%Randommly populate the dataset indices in the folds 
-vec=1:fold_num
-for i = 1:fold_num
-    start = num_values_train
-    folds{i}=vec(start:(start+n-1));
-end
-%Number of unique sample indices
-disp(length(unique([folds{:}])));
-
-
-for i = 1:3
-    dg{i} = session_dg{i}.data.getvalues(1:270000, 1:5);
-    ecog{i} = session_ecog{i}.data.getvalues(1:270000, 1:numChannels(i));
+folds_ecog_test = cell(3,fold_num);
+folds_ecog_train = cell(3,fold_num);
+%Randomly populate the dataset indices in the folds 
+vec=1:fold_num;
+for j = 1:3
+    for i = 1:fold_num
+        fstart = ((i-1)*sample_num+1);
+        fend = i*sample_num;
+        folds_ecog_train{j,i}=[ecog{j}(1:fstart-1,:);ecog{j}(fend+1:end,:)];
+        folds_ecog_test{j,i}=ecog{j}(fstart:fend,:);
+    end
 end
 
 %% Filter the ecog data

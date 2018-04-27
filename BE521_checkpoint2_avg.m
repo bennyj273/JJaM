@@ -238,11 +238,20 @@ for i = 1:3
     end
 end
 
+fs = 1000;
+band = [0.6 1.5]/(fs/2); %80 - 50 Hz of cutoff
+[f, e] = butter(1, band,'stop');
+for i = 1:3
+    for fing = 1:5
+        predpos_filtfilt{i,fing} = filtfilt(f, e, filtered_predicted_pos{i,fing});
+    end
+end
+
 %% Do some evaluation
 totalcorr = 0;
 for i = 1:3
     for ch = 1:5
-        totalcorr = totalcorr + corr(filtered_predicted_pos{i,ch}, dg{i}(:,ch));
+        totalcorr = totalcorr + corr(predpos_filtfilt{i,ch}, dg{i}(:,ch));
     end
 end
 
@@ -372,6 +381,15 @@ for i = 1:3
     end
 end
 
+fs = 1000;
+band = [0.6 1.5]/(fs/2); %80 - 50 Hz of cutoff
+[f, e] = butter(1, band,'stop');
+for i = 1:3
+    for fing = 1:5
+        predpos_leaderboard_filtfilt{i,fing} = filtfilt(f, e, filtered_predicted_pos{i,fing});
+    end
+end
+
 %% Finalize - testing
-predicted_dg = predicted_pos_leaderboard_filtered;
+predicted_dg = predpos_leaderboard_filtfilt;
 

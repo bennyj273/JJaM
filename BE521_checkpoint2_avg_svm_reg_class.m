@@ -65,8 +65,8 @@ end
 
 %% Get values
 for i = 1:3
-    dg{i} = session_dg{i}.data.getvalues(1:270000, 1:5);
-    ecog{i} = session_ecog{i}.data.getvalues(1:270000, 1:numChannels(i));
+    dg{i} = session_dg{i}.data.getvalues(1:299999, 1:5);
+    ecog{i} = session_ecog{i}.data.getvalues(1:299999, 1:numChannels(i));
 end
 
 %% Filter the ecog data
@@ -107,7 +107,9 @@ windowLength = 0.1; %100 ms
 overlap = 0.05; %50 ms overlap
 windowDisp = windowLength - overlap;
 
-features = cell(3, max(numChannels), 9); %max cell length
+numfeats = 14;
+
+features = cell(3, max(numChannels), numfeats); %max cell length
 %Features = 1 mean, 2-6 the 5 frequency bands
 
 %Functions
@@ -165,9 +167,9 @@ for i = 1:3
 end
 
 %% Put correlation features at the end
-thresh = 10
+thresh = 7
 windowLength = 100;
-windowDisp = 0.1*windowLength;
+windowDisp = 0.5*windowLength;
 fingers = 5;
 
 mn = @(x) mean(norm(x)) > thresh;
@@ -175,7 +177,8 @@ mn = @(x) mean(norm(x)) > thresh;
 for i = 1:3 %per subject
     for f = 1:fingers
         output{i, f} = [MovingWinFeats(dg_subsampled{i}(:,f), 1, windowLength, windowDisp, mn); 0];
-        output{i,f} = repelem(output{i,f}, windowLength); %Repeat elements back out again
+        output{i,f} = repelem(output{i,f}, 0.5*windowLength); %Repeat elements back out again
+        output{i, f} = [output{i,f}(1)*ones(0.5*windowLength ,1); output{i,f}];
     end
 end
 
@@ -187,11 +190,14 @@ predicted_pos = cell(3, 5);
 f_predictors = cell(3, 5);
 featsz=size(features);
 numfeats=featsz(3);
-means = cell(3, 5, 14);
-stdevs = cell(3,5,14);
+means = cell(size(features));
+stdevs = cell(size(features));
 BETAS = cell(3, 5);
 est_motions = cell(3, 5);
 KNNModels = cell(3, 5);
+coeffs = cell(3, 5);
+
+pcaKNN = false %PUT THIS ON IF YOU NEED TO RECALCULATE KNN MODELS, IT IS VERY SLOW, ugh
 
 for i = 1:3
     feats = [];
@@ -204,7 +210,7 @@ for i = 1:3
             filt = ones(sz, 1)/sz;
             norm_features{i, ch, f} = conv(norm_features{i, ch, f}, filt, 'same');
             size(norm_features{i,ch,f})
-            feats = [feats norm_features{i, ch, f}(1:5398)];
+            feats = [feats norm_features{i, ch, f}];%(1:5398)];
         end   
     end
 
@@ -231,23 +237,42 @@ for i = 1:3
         end
         pos = pos(N+2:end);
         isMoving = isMoving(N+2:end);
+        %Rk = R(1:5396, :);
+        %isMoving = isMoving(1:5396, :);
         
         %SVMModel = fitcsvm(feats(1:end-2, 1:numfeats), isMoving); %TOO SLOW
         %fitsvm functions are slow
-        %est_motion = predict(SVMModel, feats(1:end-2, 1:numfeats));
-         
-        KNNModel = fitcknn(R, isMoving, 'NumNeighbors', 2)
-        est_motion = predict(KNNModel, R)
+        %est_motion = predict(SVMModel, feats(1:end-2, 1:numfeats))
+        
+        if pcaKNN
+            tic
+            [coeff, score, latent, tsquared, explained, mu] = pca(R); %11 sec
+            toc
+            coeffs{i, finger} = coeff;
+            %100 columns to explain 90% of the variance
+            numcols = 100
+            pcaR = R*coeff(:, 1:numcols);
+            tic
+            KNNModel = fitcknn(pcaR, isMoving, 'NumNeighbors', 2) %2 seconds now
+            KNNModels{i, finger} = KNNModel;
+            toc 
+        end
+        
+        KNNModel = KNNModels{i, finger}
+        tic
+        est_motion = predict(KNNModel, pcaR) 
+        %This is the bottleneck here - O(nf), where n=datapoints, f=features
+        %It takes about 60 seconds per run, so this should be 15 minutes
+        toc
         est_motions{i, finger} = est_motion;
-        KNNModels{i, finger} = KNNModel;
         
         %TODO: de-shift isMoving
         %Implement it across the different channels
         %Use it as a mask for the position information (so that when it's
         %0, you either move less (filter more?) or just keep it still
         %Implement it in the testing data
-        
-       [Mdl, FitInfo] = fitrlinear(R, pos, 'Regularization', 'lasso', 'PassLimit', 10, 'Solver', 'asgd')
+        tic
+       [Mdl, FitInfo] = fitrlinear(R, pos, 'Regularization', 'lasso', 'PassLimit', 10, 'Solver', 'asgd') %why not try pcaR? see if it helps, if not can change
        %PassLimit 5: testcorr 0.5308
        %PassLimit 7: testcorr 0.5434, 0.5533 (submitted one)
        %PassLimit 10:testcorr 0.5563 (still iteration limitexceeded)
@@ -257,13 +282,16 @@ for i = 1:3
        est_pos = predict(Mdl, R);
        x = est_pos(1)*ones(N+2, 1);
        for k = 2:size(est_motion,1)
-            if est_motion(k) > 0.1
-                est_pos(k) = 0.9*est_pos(k)+ 0.1*est_pos(k-1);
+           alpha = 0.99
+            if est_motion(k) < 0.1
+                est_pos(k) = (1-alpha)*est_pos(k)+ alpha*est_pos(k-1);
             end
        end
        est_pos = [x; est_pos];
-       est_pos_full = spline(0:50:270000, est_pos, 0:1:270000);
+       est_pos = est_pos(1:end-1);
+       est_pos_full = spline(0:50:299999, est_pos, 0:1:299999);
        predicted_pos{i, finger} = est_pos_full;
+       toc
     end
 end
 %%
@@ -276,7 +304,16 @@ for i = 1:3
         testcorr  = testcorr + corr(predicted_pos{i,ch}(1:end-1)', dg{i}(:,ch));
     end
 end
-testcorr/15
+testcorr/15 %0.6147
+
+%% Evaluate the motion
+testcorr = 0
+for i= 1:3
+    for ch = 1:5
+        testcorr = testcorr + corr(output{i, ch}(1:5996), est_motions{i, ch})
+    end
+end
+testcorr = testcorr/15 %0.96!!!
 %%
 disp('-')
 sz = 300;
@@ -414,6 +451,7 @@ for i = 1:3
     %Features is a feature matrix of 6*channels features
     prediction = [];
     for finger = 1:5
+        tic
         M = size(feats,1) - N+1; %Total time bins
         nu = size(feats,2);
         R = zeros(M, 1);
@@ -429,19 +467,27 @@ for i = 1:3
             end
             R = [R matrix]; 
         end
+        toc
         %est_pos = R*f_predictors{i, finger}; %Make predictions
         %x = est_pos(1)*ones(N, 1);
         %est_pos = [x; est_pos];
         %Need to spline it back up to 300,000
-           
-        est_motion = predict(KNNModels{i, finger}, R)
+        
+        coeff = coeffs{i, finger};
+        numcols = 100
+        pcaR = R*coeff(:, 1:numcols);
+        tic
+        est_motion = predict(KNNModels{i, finger}, pcaR); 
+        toc
 
         Mdl = Mdls{i,finger};
+        tic
         est_pos = predict(Mdl, R);
-                
+        toc     
         for k = 2:size(est_motion,1)
-            if est_motion(k) > 0.1
-                est_pos(k) = 0.9*est_pos(k)+ 0.1*est_pos(k-1);
+            if est_motion(k) < 0.1
+                alpha = 0.9999;
+                est_pos(k) = (1-alpha)*est_pos(k)+ alpha*est_pos(k-1);
             end
         end
         

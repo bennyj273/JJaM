@@ -65,8 +65,8 @@ end
 
 %% Get values
 for i = 1:3
-    dg{i} = session_dg{i}.data.getvalues(1:270000, 1:5);
-    ecog{i} = session_ecog{i}.data.getvalues(1:270000, 1:numChannels(i));
+    dg{i} = session_dg{i}.data.getvalues(1:299999, 1:5);
+    ecog{i} = session_ecog{i}.data.getvalues(1:299999, 1:numChannels(i));
 end
 
 %% Filter the ecog data
@@ -137,7 +137,7 @@ freqNum = floor(Fs/2) + 1; %We need to have 5-175 Hz - if freqNum is 501, this c
 %Vary from 0 to pi rad/sample * 1000 samples/sec
 %Vary from 0 to 1000pi Hz
 %0 to 3.1416 Hz
-freqbands = [5 10; 15 20; 20 25; 40 60;75 115; 125 160; 160 175; 200 220; 220 240; 240 260];
+freqbands = [20 25; 40 60;75 115; 125 160; 160 175]%; 200 220; 220 240; 240 260];
 angfreqbands = freqbands*2*pi();
 angfreqpercents = angfreqbands/(Fs*pi()); %As a fraction of 1000pi, the max frequency
 angfreqindices = floor(angfreqpercents*freqNum);
@@ -186,7 +186,8 @@ for i = 1:3
             sz = 2;
             filt = ones(sz, 1)/sz;
             norm_features{i, ch, f} = conv(norm_features{i, ch, f}, filt, 'same');
-            feats = [feats norm_features{i, ch, f}(1:5998)];
+            size(norm_features{i, ch,f})
+            feats = [feats norm_features{i, ch, f}];
         end   
     end
 
@@ -231,8 +232,8 @@ end
 testcorr = 0;
 for i = 1:3
     for ch = 1:5
-        corr(predicted_pos{i,ch}', dg{i}(:,ch))
-        testcorr  = testcorr + corr(predicted_pos{i,ch}', dg{i}(:,ch));
+        corr(predicted_pos{i,ch}(1:end-1)', dg{i}(:,ch))
+        testcorr  = testcorr + corr(predicted_pos{i,ch}(1:end-1)', dg{i}(:,ch));
     end
 end
 testcorr/15
@@ -269,8 +270,8 @@ end
 totalcorr = 0;
 for i = 1:3
     for ch = 1:5
-        corr(predpos_filtfilt{i,ch}, dg{i}(:,ch))
-        totalcorr = totalcorr + corr(predpos_filtfilt{i,ch}, dg{i}(:,ch));
+        corr(predpos_filtfilt{i,ch}(1:end-1), dg{i}(:,ch))
+        totalcorr = totalcorr + corr(predpos_filtfilt{i,ch}(1:end-1), dg{i}(:,ch));
     end
 end
 
@@ -315,7 +316,7 @@ windowLength = 0.1; %100 ms
 overlap = 0.05; %50 ms overlap
 windowDisp = windowLength - overlap;
 
-features_leaderboard = cell(3, max(numChannels), 6); %max cell length
+features_leaderboard = cell(3, max(numChannels), 9); %max cell length
 %Features = 1 mean, 2-6 the 5 frequency bands
 
 %Functions
@@ -435,8 +436,7 @@ end
 
 %% Finalize - testing
 predicted_dg = predpos_leaderboard_filtfilt;
-
-<<<<<<< HEAD
+i
 %% Variable.Mat file for Make_Predictions
 save('jjam_model.mat','f_predictors','means','stdevs');
 
@@ -445,6 +445,4 @@ ecogTestVect = cell(3,1);
 for i = 1:3
     ecogTestVect{i} = session_ecog{i}.data.getvalues(5000:150000, 1:numChannels(i));
 end
-=======
 
->>>>>>> 7a3a29e45cad4b43d7737831d443fa130f43ebee

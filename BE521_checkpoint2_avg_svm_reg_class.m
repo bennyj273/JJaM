@@ -167,7 +167,8 @@ end
 %% Put correlation features at the end
 thresh = 10
 windowLength = 100;
-windowDisp = windowLength;
+windowDisp = 0.1*windowLength;
+fingers = 5;
 
 mn = @(x) mean(norm(x)) > thresh;
 
@@ -189,6 +190,8 @@ numfeats=featsz(3);
 means = cell(3, 5, 14);
 stdevs = cell(3,5,14);
 BETAS = cell(3, 5);
+est_motions = cell(3, 5);
+KNNModels = cell(3, 5);
 
 for i = 1:3
     feats = [];
@@ -235,6 +238,8 @@ for i = 1:3
          
         KNNModel = fitcknn(R, isMoving, 'NumNeighbors', 2)
         est_motion = predict(KNNModel, R)
+        est_motions{i, finger} = est_motion;
+        KNNModels{i, finger} = KNNModel;
         
         %TODO: de-shift isMoving
         %Implement it across the different channels
@@ -251,11 +256,18 @@ for i = 1:3
        Mdls{i, finger} = Mdl;
        est_pos = predict(Mdl, R);
        x = est_pos(1)*ones(N+2, 1);
+       for k = 2:size(est_motion,1)
+            if est_motion(k) > 0.1
+                est_pos(k) = 0.9*est_pos(k)+ 0.1*est_pos(k-1);
+            end
+       end
        est_pos = [x; est_pos];
        est_pos_full = spline(0:50:270000, est_pos, 0:1:270000);
        predicted_pos{i, finger} = est_pos_full;
     end
 end
+%%
+
 %% Do some evaluation
 testcorr = 0;
 for i = 1:3
@@ -306,15 +318,15 @@ end
 totalcorr = totalcorr/15
 
 %% Do some evaluation
-totalcorr = 0;
-for i = 1:3
-    for ch = 1:5
-        corr(predpos_fff{i,ch}, dg{i}(:,ch))
-        totalcorr = totalcorr + corr(predpos_fff{i,ch}, dg{i}(:,ch));
-    end
-end
+%totalcorr = 0;
+%for i = 1:3
+%    for ch = 1:5
+%        corr(predpos_fff{i,ch}, dg{i}(:,ch))
+%        totalcorr = totalcorr + corr(predpos_fff{i,ch}, dg{i}(:,ch));
+%    end
+%end
 
-totalcorr = totalcorr/15
+%totalcorr = totalcorr/15
 %% Calculate testing data from f_predictors - testing
 
 %sz = 10;
@@ -422,8 +434,17 @@ for i = 1:3
         %est_pos = [x; est_pos];
         %Need to spline it back up to 300,000
            
+        est_motion = predict(KNNModels{i, finger}, R)
+
         Mdl = Mdls{i,finger};
         est_pos = predict(Mdl, R);
+                
+        for k = 2:size(est_motion,1)
+            if est_motion(k) > 0.1
+                est_pos(k) = 0.9*est_pos(k)+ 0.1*est_pos(k-1);
+            end
+        end
+        
         x = est_pos(1)*ones(N+2, 1);
         est_pos = [x; est_pos];
         %est_pos_full = spline(0:50:270000, est_pos, 0:1:270000);

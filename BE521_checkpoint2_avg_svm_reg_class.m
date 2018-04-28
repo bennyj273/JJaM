@@ -167,7 +167,7 @@ for i = 1:3
 end
 
 %% Put correlation features at the end
-thresh = 7
+thresh = 5
 windowLength = 100;
 windowDisp = 0.5*windowLength;
 fingers = 5;
@@ -185,7 +185,7 @@ end
 %%PROBLEM: it is delayed, doesn't actually fit areas of movement
 
 
-%% Prediction - training
+%% Prediction - training -= REDEFINE VARIABLES - DO NOT OVERWRITE ALL THE KNNs HERE
 predicted_pos = cell(3, 5);
 f_predictors = cell(3, 5);
 featsz=size(features);
@@ -194,11 +194,19 @@ means = cell(size(features));
 stdevs = cell(size(features));
 BETAS = cell(3, 5);
 est_motions = cell(3, 5);
+smoothed_motions = cell(3, 5);
+%% DO NOT PRESS THIS
 KNNModels = cell(3, 5);
+%%
 coeffs = cell(3, 5);
+smoothed_thresh = 0.3
+%%
 
 pcaKNN = false %PUT THIS ON IF YOU NEED TO RECALCULATE KNN MODELS, IT IS VERY SLOW, ugh
+sz = 100
+fil = 1/sz * ones(sz, 1);
 
+numcols = 500
 for i = 1:3
     feats = [];
     for ch = 1:numChannels(i)
@@ -249,11 +257,9 @@ for i = 1:3
             [coeff, score, latent, tsquared, explained, mu] = pca(R); %11 sec
             toc
             coeffs{i, finger} = coeff;
-            %100 columns to explain 90% of the variance
-            numcols = 100
             pcaR = R*coeff(:, 1:numcols);
             tic
-            KNNModel = fitcknn(pcaR, isMoving, 'NumNeighbors', 2) %2 seconds now
+            KNNModel = fitcknn(pcaR, isMoving, 'NumNeighbors', 20) %2 seconds now
             KNNModels{i, finger} = KNNModel;
             toc 
         end
@@ -265,6 +271,8 @@ for i = 1:3
         %It takes about 60 seconds per run, so this should be 15 minutes
         toc
         est_motions{i, finger} = est_motion;
+        smoothed = conv(est_motion, fil, 'same')
+        smoothed_motions{i, finger} = smoothed;
         
         %TODO: de-shift isMoving
         %Implement it across the different channels
@@ -283,7 +291,7 @@ for i = 1:3
        x = est_pos(1)*ones(N+2, 1);
        for k = 2:size(est_motion,1)
            alpha = 0.99
-            if est_motion(k) < 0.1
+            if smoothed(k) < smoothed_thresh
                 est_pos(k) = (1-alpha)*est_pos(k)+ alpha*est_pos(k-1);
             end
        end
@@ -294,8 +302,14 @@ for i = 1:3
        toc
     end
 end
-%%
-
+%% Cross validation of classification model
+avgcorr = 0;
+for i = 1:3
+    for ch = 1:5
+        avgcorr = avgcorr + kfoldLoss(crossval(KNNModels{i, ch}));
+    end
+end
+avgcorr = avgcorr/15
 %% Do some evaluation
 testcorr = 0;
 for i = 1:3
@@ -304,7 +318,7 @@ for i = 1:3
         testcorr  = testcorr + corr(predicted_pos{i,ch}(1:end-1)', dg{i}(:,ch));
     end
 end
-testcorr/15 %0.6147
+testcorr/15
 
 %% Evaluate the motion
 testcorr = 0
@@ -392,7 +406,7 @@ windowLength = 0.1; %100 ms
 overlap = 0.05; %50 ms overlap
 windowDisp = windowLength - overlap;
 
-features_leaderboard = cell(3, max(numChannels), 6); %max cell length
+features_leaderboard = cell(3, max(numChannels), numfeats); %max cell length
 %Features = 1 mean, 2-6 the 5 frequency bands
 
 %Functions
@@ -437,6 +451,8 @@ for i = 1:3 %per channel
 end
 %% Make R matrix - testing
 predicted_pos_leaderboard = cell(3, 1);
+est_motions_test = cell(3, 5);
+smoothed_motions_test = cell(3,5);
 for i = 1:3
     feats = [];
     for ch = 1:numChannels(i)
@@ -474,10 +490,13 @@ for i = 1:3
         %Need to spline it back up to 300,000
         
         coeff = coeffs{i, finger};
-        numcols = 100
         pcaR = R*coeff(:, 1:numcols);
         tic
         est_motion = predict(KNNModels{i, finger}, pcaR); 
+        est_motions_test{i, finger} = est_motion;
+        smoothed = conv(est_motion, fil, 'same')
+        smoothed_motions_test{i, finger} = smoothed;
+
         toc
 
         Mdl = Mdls{i,finger};
@@ -485,8 +504,8 @@ for i = 1:3
         est_pos = predict(Mdl, R);
         toc     
         for k = 2:size(est_motion,1)
-            if est_motion(k) < 0.1
-                alpha = 0.9999;
+            if smoothed(k) < smoothed_thresh
+                alpha = 0.999;
                 est_pos(k) = (1-alpha)*est_pos(k)+ alpha*est_pos(k-1);
             end
         end
@@ -495,7 +514,8 @@ for i = 1:3
         est_pos = [x; est_pos];
         %est_pos_full = spline(0:50:270000, est_pos, 0:1:270000);
         %predicted_pos{i, finger} = est_pos_full;
-        est_pos_full = spline(0:50:147499, est_pos, 0:1:147499);
+        %est_pos_full = spline(0:50:147499, est_pos, 0:1:147499);
+        est_pos_full = pchip(0:50:147500, est_pos(2:end), 0:1:147500)
         prediction = [prediction est_pos_full'];
         
     end

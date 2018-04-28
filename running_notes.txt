@@ -1,0 +1,20 @@
+.26 = est motion not v good
+going to increase the # neighbors to avoid overfitting
+NumNeighbors 10 - up to 11 seconds prediction
+made it MUCH less accurate woah
+hopefully this will help the model for classification
+cross validation?
+try crossval(model)
+
+decreased numneighbors down to 2 again
+lowered the threshold to 5, so it would predict more motion and do it in smoother chunks
+increased numcols to 500
+decreased alpha to 0.9
+
+
+figure out why there is that big drop at the end, maybe it is ruining the correlation
+but higher k value is supposed to reduce overfitting!!! IDK
+est_motions has MUCH less correlation
+well i could filter that?
+trying 20 knn now
+doesn't seem to take drastically longer? and should def reduce overfitting
